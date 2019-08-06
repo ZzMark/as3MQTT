@@ -1,0 +1,19 @@
+{
+	"compilerOptions": {
+		"output": "bin/as3MQTT.swf",
+		"source-path": [
+			"src"
+		],
+		"library-path": [
+			"${FLEXUNIT_LIB_LOCATION}/version4libs/Common",
+			"${FLEXUNIT_LIB_LOCATION}/version4libs/FlexProject",
+			"${FLEXUNIT_LIB_LOCATION}/version4libs/FlexProject_Extended",
+			"${FLEXUNIT_LOCALE_LOCATION}/version4locale/",
+			"libs/as3Logger.swc"
+		]
+	},
+	"files": [
+		"src/as3MQTT.as"
+	],
+	"additionalOptions": "-locale en_US"
+}

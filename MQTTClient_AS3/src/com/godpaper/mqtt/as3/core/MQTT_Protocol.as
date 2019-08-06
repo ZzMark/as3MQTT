@@ -91,18 +91,13 @@ package com.godpaper.mqtt.as3.core
 		protected var dup:uint;
 		protected var qos:uint;
 		protected var retain:uint;
+		protected var isLength:uint;
 		protected var remainingLength:uint;
 		protected var remainPosition:uint;
 		
-		///* stores the will of the client {willFlag,willQos,willRetainFlag} */
-		public static var WILL:Array;
-		/* static block */
-		{
-			WILL = [];
-			//fake manual writing (big-endian)
-			WILL['qos'] = 0x01;
-			WILL['retain'] = 0x01;
-		}
+		public var readCompleted:Boolean = true;
+		protected var readLength:uint;
+		
 		//--------------------------------------------------------------------------
 		//
 		//  Public properties
@@ -190,6 +185,48 @@ package com.godpaper.mqtt.as3.core
 			return this.readUnsignedByte();
 		}
 		
+		public function writeMessageTypeLength(value:int,length:int):void
+		{
+			this.position = 0;
+			
+			if( fixHead == null )
+				fixHead = new ByteArray();
+			
+			this.position = 0;
+			this.writeByte(value);
+			var le:uint = length;
+			var digit:uint = 0;
+			this.isLength = 0;
+			do {
+				digit = le % 128;
+				le = le / 128;
+				if(le > 0 ){
+					digit = digit| 0x80;
+				}
+				this.isLength++;
+				this.writeByte(digit);
+				
+			}while(le > 0);
+			
+			this.remainPosition = this.position;
+			
+			//this.writeByte(remainingLength);
+			this.readBytes(fixHead);
+						
+			type = value & 0xF0;
+			dup = (value >> 3) & 0x01;
+			qos = (value >> 1) & 0x03;
+			retain = value & 0x01;
+		}
+		
+		public function writeMessageValueWithEnd(value:*):void
+		{
+			this.position = isLength+1;		
+			this.writeBytes(value);
+			this.serialize();
+		}
+		
+		
 		public function writeMessageType(value:int):void//Fix Head
 		{
 			this.position = 0;
@@ -201,20 +238,23 @@ package com.godpaper.mqtt.as3.core
 			this.writeByte(value);
 			var le:uint = remainingLength;
 			var digit:uint = 0;
+			this.isLength = 0;
 			do {
 				digit = le % 128;
 				le = le / 128;
 				if(le > 0 ){
 					digit = digit| 0x80;
 				}
+				this.isLength++;
 				this.writeByte(digit);
 
 			}while(le > 0);
+			
 			this.remainPosition = this.position;
 
 			//this.writeByte(remainingLength);
 			this.readBytes(fixHead);
-			
+						
 			type = value & 0xF0;
 			dup = (value >> 3) & 0x01;
 			qos = (value >> 1) & 0x03;
@@ -224,7 +264,7 @@ package com.godpaper.mqtt.as3.core
 
 		public function writeMessageValue(value:*):void//Variable Head
 		{
-			this.position = 2;
+			this.position = this.isLength + 1;
 			this.writeBytes(value);
 			this.serialize();
 			writeMessageType( type + (dup << 3) + (qos << 1) + retain );
@@ -232,28 +272,55 @@ package com.godpaper.mqtt.as3.core
 		
 		public function writeMessageFromBytes(input:IDataInput):void
 		{
-			this.position = 0;
-			this.writeType(input.readUnsignedByte());
-			//get VarHead and Payload use RemainingLength
-
-			//remainingLength = input.readUnsignedByte();
-			
-			//input.readBytes(this, 2, remainingLength);
-
-			var multiplier :uint = 1;
-			var remainLength:uint = 0;
-			do 
-			{
-				var le:uint = input.readUnsignedByte();
-				remainLength += (le & 127) * multiplier;
-				multiplier *= 128;
+			if (this.readCompleted) {
+				this.position = 0;
+				this.writeType(input.readUnsignedByte());
+				//get VarHead and Payload use RemainingLength
 				
+				//remainingLength = input.readUnsignedByte();
+				
+				//input.readBytes(this, 2, remainingLength);
+				
+				var multiplier :uint = 1;
+				var remainLength:uint = 0;
+				do 
+				{
+					var le:uint = input.readUnsignedByte();
+					remainLength += (le & 127) * multiplier;
+					multiplier *= 128;
+					
+				}
+				while ((le & 128) != 0);
+
+				remainingLength = remainLength;
+				this.readLength = remainLength;
+				writeMessageType( type + (dup << 3) + (qos << 1) + retain );
+				
+				if (input.bytesAvailable >= readLength) {
+					this.readCompleted = true;
+					input.readBytes(this,this.remainPosition,this.remainingLength);
+					serialize();
+					
+				} else {
+					this.readCompleted = false;
+					this.readLength = this.readLength - input.bytesAvailable;
+					input.readBytes(this,this.remainPosition,input.bytesAvailable);
+				}
+			} else {
+				// 获取socket的字节总数
+				// 如果待读取长度大于字节长度，那么要标志为多次读取
+				// 如果小于，那么读取需要字节数
+				// 没有读完，那么读取余下的
+				if (input.bytesAvailable >= readLength) {
+					this.readCompleted = true;
+					input.readBytes(this,this.length,this.readLength);
+					serialize();
+				} else {
+					this.readLength = this.readLength - input.bytesAvailable;
+					input.readBytes(this,this.length,input.bytesAvailable);
+				}
 			}
-			while ((le & 128) != 0);
-			remainingLength = remainLength;
-			writeMessageType( type + (dup << 3) + (qos << 1) + retain );
-			input.readBytes(this, this.remainPosition, remainingLength);
-			serialize();
+			
 		}
 		
 		public function readMessageType():ByteArray
@@ -283,7 +350,7 @@ package com.godpaper.mqtt.as3.core
 			fixHead = new ByteArray();
 			varHead = new ByteArray();
 			payLoad = new ByteArray();
-			
+
 			this.position = 0;
 			this.readBytes(fixHead, 0, this.remainPosition);
 			
@@ -299,8 +366,8 @@ package com.godpaper.mqtt.as3.core
 					var index:int = (this.readUnsignedByte() << 8) + this.readUnsignedByte();//the length of variable header
 					this.position = this.remainPosition;
 					this.readBytes(varHead, 0 , index + (qos?4:2));
-					this.readBytes(payLoad);
-					
+					this.readBytes(payLoad);	
+
 					remainingLength = varHead.length + payLoad.length;
 					break;
 				case SUBSCRIBE://Remaining Length is the length of the payload

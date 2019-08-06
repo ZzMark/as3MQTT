@@ -26,7 +26,6 @@ package com.godpaper.mqtt.as3.impl
 	//  Imports
 	//
 	//--------------------------------------------------------------------------
-	import com.godpaper.as3.utils.LogUtil;
 	import com.godpaper.mqtt.as3.core.MQTTEvent;
 	import com.godpaper.mqtt.as3.core.MQTT_Protocol;
 	import com.godpaper.mqtt.as3.utils.UIDUtil;
@@ -43,7 +42,7 @@ package com.godpaper.mqtt.as3.impl
 	import flash.utils.Endian;
 	import flash.utils.Timer;
 	
-	import mx.logging.ILogger;
+	import com.godpaper.mqtt.as3.core.Log;
 
 //event metdata declare
 	/** Dispatched when a new MQTT server is connected. */
@@ -133,10 +132,11 @@ package com.godpaper.mqtt.as3.impl
 		 * @see http://mqtt.org/wiki/doku.php/clientid_autogeneration
 		 */
 		public var clientid:String; /* client id sent to brocker */
-		public var will:Array; /* stores the will of the client {willFlag,willQos,willRetainFlag} */
+		public var willTopic:String;
+		public var willPayload:String;
+		public var willQos:int;
 		public var username:String; /* stores username */
 		public var password:String; /* stores password */
-//		public var QoS:int=0; /* stores QoS level */ conflict with param of function
 		public var cleanSession:Boolean=true; /* as3 socket fluse auto clean */
 		/**
 		 * The topic name is present in the variable header of an MQTT PUBLISH message.</br>
@@ -176,7 +176,7 @@ package com.godpaper.mqtt.as3.impl
 		//Single-level wildcard
 		public static const TOPIC_S_LEVEL_WILDCARD:String = "+";
 		//as3Logger
-		private static const LOG:ILogger=LogUtil.getLogger(MQTTSocket);
+		private static const LOG:Log=new Log();
 
 		//--------------------------------------------------------------------------
 		//
@@ -216,7 +216,6 @@ package com.godpaper.mqtt.as3.impl
 		 * @param cleanSession Position: bit 1 of the Connect flags byte.
 		 * 
 		 */		
-//		public function MQTTSocket(host:String=null, port:int=1883, topicname:String=null, clientid:String=null, username:String=null, password:String=null,willRetain:Boolean=true,willQos:Boolean=true,willFlag:Boolean=true,cleanSession:Boolean=true)
 		public function MQTTSocket(host:String=null, port:int=1883,username:String=null, password:String=null, topicname:String=null, clientid:String=null, will:Boolean=false,cleanSession:Boolean=false)
 		{
 			//parameters store
@@ -260,9 +259,7 @@ package com.godpaper.mqtt.as3.impl
 				this.password=password;
 			}
 			//			this.publishMessage.writeUTFBytes("HELLO"); // (0x48, 0x45 , 0x4c , 0x4c, 0x4f); //HELLO is the message
-			//Will flag/Qos/Retain
-			if (will)
-				this.will = MQTT_Protocol.WILL;
+
 			//Clean Session flag,Set (1).
 			if (cleanSession)
 				this.cleanSession = cleanSession;
@@ -296,50 +293,37 @@ package com.godpaper.mqtt.as3.impl
 		 * @param QoS Current Qos level.
 		 * 
 		 */		
-		public function subscribe(topicnames:Vector.<String>, Qoss:Vector.<int>, QoS:int=0):void
+		public function subscribe(topicnames:Array, Qoss:Array, QoS:int=0):void
 		{
 			//subscribe list store,and subscribe to socket server.
+
 			var bytes:ByteArray = new ByteArray();
-			
 			if( QoS ) msgid++;
 			bytes.writeByte(msgid >> 8);
 			bytes.writeByte(msgid % 256);
 			
-			var i:int;
-			var pattern:RegExp = /\/|\+|\#/;
+			LOG.debug(topicnames,Qoss);
 			
-			for(i = 0; i < topicnames.length; i++){
-				//TODO:Nomore validation on topic name,according to MQTT_SPEC document.
-				/*A UTF-encoded string.
-					This must not contain Topic wildcard characters.
-					When received by a client that subscribed using wildcard characters, this string will
-					be the absolute topic specified by the originating publisher and not the subscription
-					string used by the client.*/
-//				if (topicnames[i].search(pattern) != -1)
-//					throw new Error("Illegal topic name,include: ".concat(TOPIC_LEVEL_SEPARATOR,TOPIC_M_LEVEL_WILDCARD,TOPIC_S_LEVEL_WILDCARD));
-//				if (topicnames[i].length > MAX_LEN_TOPIC)
-//					throw new Error("Out of range ".concat(MAX_LEN_TOPIC, "!"));
+			for(var i:int = 0; i < topicnames.length; i++){
 				
 				writeString(bytes, topicnames[i]);
 				bytes.writeByte(Qoss[i]);
 			}
-			//TODO:send subscribe message
+			// send subscribe message
 			var type:int=MQTT_Protocol.SUBSCRIBE;
 				type += (QoS << 1);
 			this.subscribeMessage=new MQTT_Protocol();
 			this.subscribeMessage.writeMessageType(type);
 			this.subscribeMessage.writeMessageValue(bytes);
-			//
+
 			socket.writeBytes(this.subscribeMessage);
 			socket.flush();
-			
-			LOG.info("Subscribe sent");
 		}
 		/**
 		 * @param topicnames unsubscribed topic names.
 		 * @param QoS current Qos level
 		 */		
-		public function unsubscribe(topicnames:Vector.<String>, QoS:int=0):void
+		public function unsubscribe(topicnames:Array, QoS:int=0):void
 		{
 			//unubscribe list store,and unubscribe to socket server.
 			var bytes:ByteArray = new ByteArray();
@@ -349,26 +333,23 @@ package com.godpaper.mqtt.as3.impl
 			var pattern:RegExp = /\/|\+|\#/;
 			var i:int;
 			for(i = 0; i < topicnames.length; i++){
-				if (topicnames[i].search(pattern) != -1)
-					throw new Error("Illegal topic name,include: ".concat(TOPIC_LEVEL_SEPARATOR,TOPIC_M_LEVEL_WILDCARD,TOPIC_S_LEVEL_WILDCARD));
-				if (topicnames[i].length > MAX_LEN_TOPIC)
-					throw new Error("Out of range ".concat(MAX_LEN_TOPIC, "!"));
+				if (topicnames[i].length > MAX_LEN_TOPIC) {
+                    throw new Error("Out of range ".concat(MAX_LEN_TOPIC, "!"));
+				}
 				
 				writeString(bytes, topicnames[i]);
 			}
-			//TODO:send unubscribe message
+			// send unubscribe message
 			var type:int=MQTT_Protocol.UNSUBSCRIBE;
 			if (QoS)
 				type+=QoS << 1;
+
 			this.unsubscribeMessage=new MQTT_Protocol();
 			this.unsubscribeMessage.writeMessageType(type);
 			this.unsubscribeMessage.writeMessageValue(bytes);
-			//
 			
 			socket.writeBytes(this.unsubscribeMessage);
 			socket.flush();
-
-			LOG.info("UnSsbscribe sent");
 		}
 		
 		//
@@ -379,15 +360,12 @@ package com.godpaper.mqtt.as3.impl
 		 * @param QoS Qos level.
 		 * @param DUP Set to zero (0). This means that the message is being sent for the first time. See DUP for more details.
 		 * @param retain Set to zero. This means do not retain. See Retain for more details.
-		 */		
+		 */	
 		public function publish(topicname:String, message:String, QoS:int=0, retain:int=0):void
-		{
-			var pattern:RegExp = /\/|\+|\#/;
-			if (topicname.search(pattern) != -1)
-				throw new Error("Illegal topic name,include: ".concat(TOPIC_LEVEL_SEPARATOR,TOPIC_M_LEVEL_WILDCARD,TOPIC_S_LEVEL_WILDCARD));
-			//TODO:socket sever response detect.
+		{			
 			var bytes:ByteArray=new ByteArray();
 			writeString(bytes, topicname);
+			var byteLen:int = bytes.length;
 			//
 			if (QoS)
 			{
@@ -395,24 +373,31 @@ package com.godpaper.mqtt.as3.impl
 				bytes.writeByte(msgid >> 8);
 				bytes.writeByte(msgid % 256);
 			}
-			//
-			writeString(bytes, message);
-			//
+			// 3.1.1规定所有UTF8均有前两个字节描述字节大小，这样就导致最大为64k消息，3.1没有此要求，且 EMQX 不对这个位置进行校验，去掉也可以使用
+			writeNoMSBString(bytes,message);
+			
 			var type:int=MQTT_Protocol.PUBLISH;
-				type += (QoS << 1);
+			type += (QoS << 1);
+			
 			if (retain)
 				type += 1;
-			this.publishMessage=new MQTT_Protocol();
-			this.publishMessage.writeMessageType(type);
-			this.publishMessage.writeMessageValue(bytes);
-			//
-			LOG.info("MQTT publishMessage.length:{0}", this.publishMessage.length);
-			this.socket.writeBytes(this.publishMessage, 0, this.publishMessage.length);
+
+			this.publishMessage = new MQTT_Protocol();
+			
+			if (message.length + byteLen > 127) {
+				this.publishMessage.writeMessageTypeLength(type,message.length + byteLen);				
+				this.publishMessage.writeMessageValueWithEnd(bytes);
+			} else {
+				this.publishMessage.writeMessageType(type);				
+				this.publishMessage.writeMessageValue(bytes);
+			}
+
+	
+			this.socket.writeBytes(this.publishMessage, 0, this.publishMessage.length);			
 			this.socket.flush();
 			
-			//
-			LOG.info("Publish sent");
 		}
+		
 		/**
 		 * @param host The MQTT socket required host name.
 		 * @param port The MQTT socket required host port.
@@ -455,6 +440,10 @@ package com.godpaper.mqtt.as3.impl
 		//  Protected methods
 		//
 		//--------------------------------------------------------------------------
+		protected function writeNoMSBString(bytes:ByteArray, str:String):void {
+			bytes.writeMultiByte(str, 'utf-8');
+		}
+		
 		protected function writeString(bytes:ByteArray, str:String):void
 		{
 			var len:int=str.length;
@@ -473,7 +462,7 @@ package com.godpaper.mqtt.as3.impl
 			//			socket.writeUTFBytes("Host: hejp.co.uk\n");
 			//			socket.writeUTFBytes("\n");
 			//			All data values are in big-endian order: higher order bytes precede lower order bytes.
-			LOG.info("MQTT byte order:{0}", this.socket.endian);
+			LOG.debug("MQTT byte order:{0}", this.socket.endian);
 			if (this.socket.endian != Endian.BIG_ENDIAN)
 			{
 				throw new Error("Endian failed!");
@@ -488,7 +477,18 @@ package com.godpaper.mqtt.as3.impl
 				bytes.writeByte(0x51); //Q
 				bytes.writeByte(0x54); //T
 				bytes.writeByte(0x54); //T
-				bytes.writeByte(0x04); //Protocol version = 3
+				bytes.writeByte(0x04); //Protocol version = 3.1.1
+				
+				// bytes.writeByte(0x00); // 0
+				// bytes.writeByte(0x06); // 6
+				// bytes.writeByte(0x4d); // M
+				// bytes.writeByte(0x51); // Q
+				// bytes.writeByte(0x49); // I
+				// bytes.writeByte(0x73); // s
+				// bytes.writeByte(0x64); // d
+				// bytes.writeByte(0x70); // p
+				// bytes.writeByte(0x03); // Protocol version = 3.1
+				
 				//Connect flags
 				var type:int=0;
 				if (cleanSession)
@@ -496,12 +496,14 @@ package com.godpaper.mqtt.as3.impl
 				//			Will flag is set (1)
 				//			Will QoS field is 1
 				//			Will RETAIN flag is clear (0)
-				if (will)//(willFlag,willQos,willRetain)
+				
+				// will 标识位
+				if (willTopic)
 				{
-					type+=4;
-					type+=this.will['qos'] << 3;
-					if (this.will['retain'])
-						type+=32;
+					willQos = (willQos & 3) << 3;
+					type+=4; // will flag
+					type+=willQos;
+					// type+= 32; // will retain
 				}
 				if (username)
 					type+=128;
@@ -512,13 +514,26 @@ package com.godpaper.mqtt.as3.impl
 				bytes.writeByte(keepalive >> 8); //Keepalive MSB
 				bytes.writeByte(keepalive & 0xff); //Keepaliave LSB = 60
 				writeString(bytes, clientid);
-				writeString(bytes, username ? username : "");
-				writeString(bytes, password ? password : "");
+				
+				// 写入 will 标识位内容
+				if (willTopic) {
+					writeString(bytes, willTopic ? willTopic : "");
+					writeString(bytes, willPayload ? willPayload : "");
+				}
+				
+				if(username) {
+					writeString(bytes, username ? username : "");
+				}
+				
+				if(password) {
+					writeString(bytes, password ? password : "");
+				}
+				
 				this.connectMessage.writeMessageType(MQTT_Protocol.CONNECT); //Connect
 				this.connectMessage.writeMessageValue(bytes); //Connect
 			}
 			//
-			LOG.info("MQTT connectMesage.length:{0}", this.connectMessage.length);
+			LOG.debug("MQTT connectMesage.length:{0}", this.connectMessage.length);
 			this.socket.writeBytes(this.connectMessage, 0, this.connectMessage.length);
 			this.socket.flush();
 			//dispatch event
@@ -565,17 +580,17 @@ package com.godpaper.mqtt.as3.impl
 				this.pingMessage.writeMessageType(MQTT_Protocol.PINGREQ);
 				this.pingMessage.writeMessageValue(new ByteArray);
 			}
-			LOG.info("MQTT pingMessage.length:{0}", this.pingMessage.length);
+			LOG.debug("MQTT pingMessage.length:{0}", this.pingMessage.length);
 			socket.writeBytes(this.pingMessage, 0, this.pingMessage.length);
 			
 			socket.flush();
-			LOG.info("Ping sent.");
+			LOG.debug("Ping sent.");
 		}
 
 		//
 		protected function onSocketData(event:ProgressEvent):void
 		{
-			LOG.info("MQTT Socket received {0}{1}", this.socket.bytesAvailable, " byte(s) of data.");
+			LOG.debug("MQTT Socket received {0}{1}", this.socket.bytesAvailable, " byte(s) of data.");
 			// Loop over all of the received data, and only read a byte if there  is one available 
 			
 			while( socket.bytesAvailable ){
@@ -583,14 +598,14 @@ package com.godpaper.mqtt.as3.impl
 				var result:MQTT_Protocol=new MQTT_Protocol();
 					result.writeMessageFromBytes(socket);
 				
-				LOG.info("Protocol Type:{0}", result.readType().toString(16));
-				LOG.info("Protocol Length:{0}", result.length);
-				LOG.info("Protocol DUP:{0}", result.readDUP());
-				LOG.info("Protocol QoS:{0}", result.readQoS());
-				LOG.info("Protocol RETAIN:{0}", result.readRETAIN());
-				LOG.info("Protocol RemainingLength:{0}", result.readRemainingLength());
-				LOG.info("Protocol Variable Header Length:{0}", result.readMessageValue().length);
-				LOG.info("Protocol PayLoad Length:{0}", result.readPayLoad().length);
+				LOG.debug("Protocol Type:{0}", result.readType().toString(16));
+				LOG.debug("Protocol Length:{0}", result.length);
+				LOG.debug("Protocol DUP:{0}", result.readDUP());
+				LOG.debug("Protocol QoS:{0}", result.readQoS());
+				LOG.debug("Protocol RETAIN:{0}", result.readRETAIN());
+				LOG.debug("Protocol RemainingLength:{0}", result.readRemainingLength());
+				LOG.debug("Protocol Variable Header Length:{0}", result.readMessageValue().length);
+				LOG.debug("Protocol PayLoad Length:{0}", result.readPayLoad().length);
 				
 				switch (result.readType())
 				{
@@ -636,11 +651,11 @@ package com.godpaper.mqtt.as3.impl
 						break;
 					case MQTT_Protocol.PINGREQ:
 						onPingreq(result);
-						LOG.info("PING request");
+						LOG.debug("PING request");
 						break;
 					case MQTT_Protocol.PINGRESP:
 						onPingresp(result);
-						LOG.info("PING response");
+						LOG.debug("PING response");
 						break;
 					case MQTT_Protocol.DISCONNECT:
 						onDisconnect(result);
@@ -705,39 +720,36 @@ package com.godpaper.mqtt.as3.impl
 			//Variable header
 			//Payload
 			//Actions
-			var varHead:ByteArray = packet.readMessageValue();
-			var length:uint = (varHead.readUnsignedByte() << 8) + varHead.readUnsignedByte();
-			var topicName:String = varHead.readMultiByte(length, "utf");
-			if( packet.readQoS() ){
-				var messageId:uint = (varHead.readUnsignedByte() << 8) + varHead.readUnsignedByte();
-				LOG.info("Publish Message ID {0}", messageId);
+			var varHead:ByteArray 		= packet.readMessageValue();
+			var length:uint 			= (varHead.readUnsignedByte() << 8) + varHead.readUnsignedByte();
+			var topicName:String 		= varHead.readMultiByte(length, "utf-8");
+			var qos:uint 				= packet.readQoS();
+			var payLoad:ByteArray 		= packet.readPayLoad();
+			try {
+				var topicContent:String 	= payLoad.readMultiByte(payLoad.length,"utf-8");
+			} catch (err:Error) {
+				LOG.info("error",err.message);
 			}
-			var payLoad:ByteArray = packet.readPayLoad();
-			//length = (payLoad.readUnsignedByte() << 8) + payLoad.readUnsignedByte();
-			//if( length > payLoad.length ){
-			//	length = payLoad.length;
-			//	payLoad.position = 0;
-			//}
-			var topicContent:String = payLoad.readMultiByte(payLoad.length, "utf-8");
 			
-			LOG.info("Publish TopicName {0}", topicName);
-			LOG.info("Publish TopicContent {0}", topicContent);
+			if( qos != 0 )
+			{
+				var messageId:uint = (varHead.readUnsignedByte() << 8) + varHead.readUnsignedByte();
+				
+				var bytes:ByteArray=new ByteArray();
+				msgid++;
+				bytes.writeByte(messageId >> 8);
+				bytes.writeByte(messageId % 256);
+				var type:int=MQTT_Protocol.PUBACK;
+				type += (packet.readQoS() << 1);
+				this.pubackMessage=new MQTT_Protocol();
+				this.pubackMessage.writeMessageType(type);
+				this.pubackMessage.writeMessageValue(bytes);
+				//
+				this.socket.writeBytes(this.pubackMessage, 0, this.pubackMessage.length);
+				this.socket.flush();
+			}
 			
-			var bytes:ByteArray=new ByteArray();
-			msgid++;
-			bytes.writeByte(messageId >> 8);
-			bytes.writeByte(messageId % 256);
-			var type:int=MQTT_Protocol.PUBACK;
-			type += (packet.readQoS() << 1);
-			this.pubackMessage=new MQTT_Protocol();
-			this.pubackMessage.writeMessageType(type);
-			this.pubackMessage.writeMessageValue(bytes);
-			//
-			LOG.info("MQTT pubackMessage.length:{0}", this.pubackMessage.length);
-			this.socket.writeBytes(this.pubackMessage, 0, this.pubackMessage.length);
-			this.socket.flush();
-			
-			this.dispatchEvent(new MQTTEvent(MQTTEvent.PUBLISH, false, false, topicName + ":" + topicContent));
+			this.dispatchEvent(new MQTTEvent(MQTTEvent.MESSGE, false, false,topicContent));
 		}
 
 		//A PUBACK message is the response to a PUBLISH message with QoS level 1. A PUBACK
@@ -849,7 +861,6 @@ package com.godpaper.mqtt.as3.impl
 			}
 		}
 
-		//TODO:
 		protected function onSuback(packet:MQTT_Protocol):void
 		{
 			//Fixed header

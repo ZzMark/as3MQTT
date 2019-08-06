@@ -3,17 +3,55 @@ as3MQTT
 
 Pure/Native Action Script 3 that implements the MQTT (Message Queue Telemetry Transport) protocol, a lightweight protocol for publish/subscribe messaging.
 
-* Gist
+## feature
 
-see: https://github.com/yangboz/as3MQTT/blob/master/MQTTClient_AS3/src/MQTTClient_AS3.as
+- unlock max username length and topic name length
+- support big(>64k) message
+- add WILL
 
-* Maven repository
+## quick start
 
-http://repository-godpaper.forge.cloudbees.com/snapshot/com/godpaper/as3/as3MQTT/
+```ts
+private var mqtt:MQTTSocket;
 
-* ASDOC
+public function connect():void {
+    mqtt = new MQTTSocket();
 
-http://htmlpreview.github.io/?https://github.com/yangboz/as3MQTT/blob/master/MQTTClient_AS3/target/asdoc/index.html
+    mqtt.username = 'test';
+    mqtt.password = 'passwd';
+
+    mqtt.willTopic = 'mqtt/logout';
+    mqtt.willQos = 1;
+    mqtt.willPayload = 'logout';
+ 
+    // event listeners
+    mqtt.addEventListener(MQTTEvent.CONNECT, onConnect);
+    mqtt.addEventListener(MQTTEvent.CLOSE, onClose);
+    mqtt.addEventListener(MQTTEvent.ERROR, onError);
+    mqtt.addEventListener(MQTTEvent.MESSGE, onMessage);
+
+    mqtt.connect('iot.eclipse.org', 1883);
+}
+
+private function onConnect(event:MQTTEvent):void {
+    logger.log("MQTT connected: {0}", event.message);
+    var qos:Array = new Array();
+    qos.push(1);
+    mqtt.subscribe(new Array('mqtt/subscribe'), qos, 1);
+}
+
+private function onClose(event:MQTTEvent):void {
+    logger.log("MQTT close: {0}", event.message);
+}
+
+private function onError(event:MQTTEvent):void {
+    logger.error("MQTT Error: {0}", event.message);
+}
+
+private function onMessage(event:MQTTEvent):void {
+    logger.error("MQTT Error: {0}", event.message);
+}
+```
 
 ## Overview
 
@@ -35,31 +73,16 @@ Features of the protocol include:
     #6.A mechanism to notify interested parties to an abnormal disconnection of a client using the Last Will and Testament feature
 
 
-## MQ Telemetry Transport (MQTT) V3.1 Protocol Specification
+## MQ Telemetry Transport (MQTT) V3.1.1 Protocol Specification
 
-http://public.dhe.ibm.com/software/dw/webservices/ws-mqtt/mqtt-v3r1.html
+http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/mqtt-v3.1.1.pdf
 
-http://public.dhe.ibm.com/software/dw/webservices/ws-mqtt/MQTT_V3.1_Protocol_Specific.pdf
-
-## White Papers 
-
-http://www.redbooks.ibm.com/redbooks/pdfs/sg248054.pdf
-
-http://www-sop.inria.fr/maestro/MASTER-RSD/html/2004-05/perez.pdf
+中文版本：http://mcxiaoke.github.io/mqtt/protocol/MQTT-3.1.1-CN.html
 
 ## Tips
 
 Mosquitto console at Linux: tcpdump -nl -A port 1883
 
-## Wiki
-
-https://github.com/yangboz/as3MQTT/wiki
-
 ## Other client libraries 
 
 https://github.com/mqtt/mqtt.github.io/wiki/libraries
-
-## Support on Beerpay
-Hey dude! Help me out for a couple of :beers:!
-
-[![Beerpay](https://beerpay.io/yangboz/as3MQTT/badge.svg?style=beer-square)](https://beerpay.io/yangboz/as3MQTT)  [![Beerpay](https://beerpay.io/yangboz/as3MQTT/make-wish.svg?style=flat-square)](https://beerpay.io/yangboz/as3MQTT?focus=wish)
