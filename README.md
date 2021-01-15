@@ -1,6 +1,14 @@
 as3MQTT
 =======
 
+# Deprecated
+
+flash is dead. 
+
+Congratulation!
+
+---
+
 Pure/Native Action Script 3 that implements the MQTT (Message Queue Telemetry Transport) protocol, a lightweight protocol for publish/subscribe messaging.
 
 ## feature
